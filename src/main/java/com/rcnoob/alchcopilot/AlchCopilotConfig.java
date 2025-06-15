@@ -44,6 +44,17 @@ public interface AlchCopilotConfig extends Config {
         return 0;
     }
 
+    @ConfigItem(
+            keyName = "maxTotalPrice",
+            name = "Maximum Total Investment",
+            description = "Maximum total cost for recommended quantity (gp). Set to 0 to disable this filter.",
+            section = selectionSection,
+            position = 3
+    )
+    default int maxTotalPrice() {
+        return 0;
+    }
+
     @ConfigSection(
             name = "Display Settings",
             description = "How the plugin displays information",
@@ -62,25 +73,25 @@ public interface AlchCopilotConfig extends Config {
     }
 
     @ConfigItem(
-            keyName = "recommendedQuantity",
-            name = "Recommended Purchase Quantity",
-            description = "How many items to recommend buying (will not exceed GE limit).",
-            section = displaySection,
-            position = 1
-    )
-    @Range(min = 1, max = 10000)
-    default int recommendedQuantity() {
-        return 1000;
-    }
-
-    @ConfigItem(
             keyName = "refreshOnLogin",
             name = "Auto-refresh on Login",
             description = "Automatically search for optimal items when logging in.",
             section = displaySection,
-            position = 2
+            position = 1
     )
     default boolean refreshOnLogin() {
         return true;
+    }
+
+    @ConfigItem(
+            keyName = "maxRecommendations",
+            name = "Maximum Stored Recommendations",
+            description = "Maximum number of item recommendations to keep in the list.",
+            section = displaySection,
+            position = 2
+    )
+    @Range(min = 1, max = 100)
+    default int maxRecommendations() {
+        return 10;
     }
 }
