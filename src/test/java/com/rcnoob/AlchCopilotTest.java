@@ -1,14 +1,14 @@
-package com.vartan;
+package com.rcnoob;
 
-import com.vartan.abc.AbcAlchPlugin;
+import com.rcnoob.alchcopilot.AlchCopilotPlugin;
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 
-public class AbcAlchTest
+public class AlchCopilotTest
 {
 	public static void main(String[] args) throws Exception
 	{
-		ExternalPluginManager.loadBuiltin(AbcAlchPlugin.class);
+		ExternalPluginManager.loadBuiltin(AlchCopilotPlugin.class);
 		RuneLite.main(args);
 	}
 }

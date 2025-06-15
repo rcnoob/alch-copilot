@@ -1,4 +1,4 @@
-package com.vartan.abc.util;
+package com.rcnoob.alchcopilot.util;
 
 public class IntegerUtil {
     private static final String[] UNITS = {"", "k", "m", "b", "t"};

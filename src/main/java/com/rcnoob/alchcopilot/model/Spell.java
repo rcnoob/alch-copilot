@@ -1,4 +1,4 @@
-package com.vartan.abc.model;
+package com.rcnoob.alchcopilot.model;
 
 public enum Spell {
     LOW_LEVEL_ALCHEMY(31, 3, 21),

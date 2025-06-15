@@ -1,4 +1,4 @@
-package com.vartan.abc.model;
+package com.rcnoob.alchcopilot.model;
 
 public enum SoundEffect {
     UI_BOOP(2266),

@@ -1,4 +1,4 @@
-package com.vartan.abc.model;
+package com.rcnoob.alchcopilot.model;
 
 
 import java.time.Duration;

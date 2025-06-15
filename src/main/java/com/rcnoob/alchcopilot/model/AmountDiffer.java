@@ -1,4 +1,4 @@
-package com.vartan.abc.model;
+package com.rcnoob.alchcopilot.model;
 
 public class AmountDiffer {
     private int previousValue = 0;

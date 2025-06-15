@@ -1,4 +1,4 @@
-package com.vartan.abc.util;
+package com.rcnoob.alchcopilot.util;
 
 import java.awt.*;
 
