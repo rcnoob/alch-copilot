@@ -19,6 +19,7 @@ import java.util.List;
 
 public class AlchCopilotPanel extends PluginPanel {
 
+    // alchemy takes 3 seconds per cast
     private static final double SECONDS_PER_ALCH = 3.0;
     private static final double ALCHS_PER_HOUR = 3600.0 / SECONDS_PER_ALCH;
 
@@ -28,7 +29,6 @@ public class AlchCopilotPanel extends PluginPanel {
     JPanel recommendationsPanel;
     JScrollPane scrollPane;
     JButton refreshButton;
-    JButton newItemButton;
     JButton clearButton;
     JLabel statusLabel;
 
@@ -37,45 +37,34 @@ public class AlchCopilotPanel extends PluginPanel {
         this.plugin = plugin;
         this.client = client;
         this.itemManager = itemManager;
-        this.refreshButton = new JButton("Find Optimal Item");
-        this.newItemButton = new JButton("New Item");
+        this.refreshButton = new JButton("Find");
 
         setBorder(new EmptyBorder(6, 6, 6, 6));
         setBackground(ColorScheme.DARK_GRAY_COLOR);
         setLayout(new BorderLayout());
 
+        // create main layout container
         final JPanel layoutPanel = new JPanel();
         BoxLayout boxLayout = new BoxLayout(layoutPanel, BoxLayout.Y_AXIS);
         layoutPanel.setLayout(boxLayout);
         add(layoutPanel, BorderLayout.NORTH);
 
-        JPanel buttonPanel = new JPanel(new GridLayout(1, 3, 3, 0));
+        // setup button panel with 2 buttons
+        JPanel buttonPanel = new JPanel(new GridLayout(1, 2, 5, 0));
 
+        // find button searches for new optimal items
         refreshButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                plugin.refreshRecommendations();
-                statusLabel.setText("Refreshing recommendations...");
+                plugin.findNewOptimalItem();
+                statusLabel.setText("Searching for items...");
                 refreshButton.setEnabled(false);
-                newItemButton.setEnabled(false);
                 clearButton.setEnabled(false);
             }
         });
         buttonPanel.add(refreshButton);
 
-        newItemButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                plugin.findNewOptimalItem();
-                statusLabel.setText("Searching for additional item...");
-                refreshButton.setEnabled(false);
-                newItemButton.setEnabled(false);
-                clearButton.setEnabled(false);
-            }
-        });
-        newItemButton.setEnabled(false);
-        buttonPanel.add(newItemButton);
-
+        // clear button removes all recommendations
         clearButton = new JButton("Clear");
         clearButton.addActionListener(new ActionListener() {
             @Override
@@ -89,11 +78,13 @@ public class AlchCopilotPanel extends PluginPanel {
 
         layoutPanel.add(buttonPanel);
 
+        // status label shows current plugin state
         statusLabel = new JLabel("Ready to search for optimal alch item");
         statusLabel.setForeground(Color.LIGHT_GRAY);
         statusLabel.setFont(FontManager.getRunescapeSmallFont());
         layoutPanel.add(statusLabel);
 
+        // scrollable panel for item recommendations
         recommendationsPanel = new JPanel();
         BoxLayout recommendationsBoxLayout = new BoxLayout(recommendationsPanel, BoxLayout.Y_AXIS);
         recommendationsPanel.setLayout(recommendationsBoxLayout);
@@ -111,10 +102,10 @@ public class AlchCopilotPanel extends PluginPanel {
         updateItemList();
     }
 
+    // refresh the displayed list of recommendations
     public void updateItemList() {
-        refreshButton.setText("Refresh");
+        refreshButton.setText("Find");
         refreshButton.setEnabled(true);
-        newItemButton.setEnabled(true);
         clearButton.setEnabled(plugin.hasRecommendations());
 
         List<AlchItem> recommendations = plugin.getAlchItems();
@@ -122,13 +113,14 @@ public class AlchCopilotPanel extends PluginPanel {
 
         if (recommendations.isEmpty()) {
             if (plugin.readyForOptimalUpdate) {
-                statusLabel.setText("Searching for optimal item...");
-                JLabel waitingLabel = new JLabel("Please wait while we find the best alch item...");
+                // show waiting message while searching
+                statusLabel.setText("Searching for items...");
+                JLabel waitingLabel = new JLabel("Please wait while we find items...");
                 waitingLabel.setBorder(new EmptyBorder(20, 10, 20, 10));
                 recommendationsPanel.add(waitingLabel);
-                newItemButton.setEnabled(false);
                 clearButton.setEnabled(false);
             } else {
+                // show no results message with suggestion
                 statusLabel.setText("No suitable items found");
                 JLabel noItemsLabel = new JLabel("No items meet the current criteria.");
                 noItemsLabel.setBorder(new EmptyBorder(10, 10, 5, 10));
@@ -138,11 +130,11 @@ public class AlchCopilotPanel extends PluginPanel {
                 suggestionLabel.setBorder(new EmptyBorder(5, 10, 20, 10));
                 suggestionLabel.setForeground(Color.LIGHT_GRAY);
                 recommendationsPanel.add(suggestionLabel);
-                newItemButton.setEnabled(false);
                 clearButton.setEnabled(false);
             }
         } else {
-            statusLabel.setText("Found " + recommendations.size() + " recommendation" + (recommendations.size() == 1 ? "" : "s"));
+            // display found recommendations
+            statusLabel.setText("Found " + recommendations.size() + " item" + (recommendations.size() == 1 ? "" : "s"));
 
             for (int i = 0; i < recommendations.size(); i++) {
                 AlchItem item = recommendations.get(i);
@@ -158,14 +150,17 @@ public class AlchCopilotPanel extends PluginPanel {
         recommendationsPanel.revalidate();
         recommendationsPanel.repaint();
 
+        // scroll to top of list
         SwingUtilities.invokeLater(() -> {
             scrollPane.getVerticalScrollBar().setValue(0);
         });
     }
 
+    // create the detailed panel for each recommended item
     private JPanel generateOptimalItemPanel(AlchItem item, int rank) {
         JPanel container = new JPanel();
 
+        // color code border by ranking
         Color borderColor;
         if (rank == 1) {
             borderColor = Color.GREEN;
@@ -182,6 +177,7 @@ public class AlchCopilotPanel extends PluginPanel {
         container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
         container.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 
+        // header with rank number, icon, and item name
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
@@ -210,11 +206,13 @@ public class AlchCopilotPanel extends PluginPanel {
         container.add(headerPanel);
         container.add(Box.createVerticalStrut(10));
 
+        // profit information
         JPanel profitPanel = createInfoRow("Profit per Alch:",
                 formatNumber(item.getHighAlchProfit()) + " gp",
                 Color.GREEN);
         container.add(profitPanel);
 
+        // hourly profit calculation with color coding
         long profitPerHour = Math.round(item.getHighAlchProfit() * ALCHS_PER_HOUR);
         Color profitHourColor = getProfitPerHourColor(profitPerHour);
         JPanel profitHourPanel = createInfoRow("Profit per Hour:",
@@ -227,6 +225,7 @@ public class AlchCopilotPanel extends PluginPanel {
                 Color.ORANGE);
         container.add(pricePanel);
 
+        // optional detailed information
         if (plugin.config.showDetailedInfo()) {
             JPanel alchPanel = createInfoRow("High Alch Value:",
                     formatNumber(item.getHighAlchPrice()) + " gp",
@@ -239,6 +238,7 @@ public class AlchCopilotPanel extends PluginPanel {
             container.add(limitPanel);
         }
 
+        // optional volume information
         if (plugin.config.showVolumeInfo() && item.getVolumeData() != null) {
             VolumeChecker.VolumeData volumeData = item.getVolumeData();
 
@@ -256,6 +256,7 @@ public class AlchCopilotPanel extends PluginPanel {
 
         container.add(Box.createVerticalStrut(10));
 
+        // recommendation section with quantity and total cost
         int recommendedQuantity = plugin.calculateRecommendedQuantity(item.getGePrice(), item.getGeLimit());
         long totalCost = (long) recommendedQuantity * item.getGePrice();
 
@@ -287,6 +288,7 @@ public class AlchCopilotPanel extends PluginPanel {
         recommendationPanel.add(contentPanel, BorderLayout.WEST);
         container.add(recommendationPanel);
 
+        // remove button for non-top items
         if (rank > 1) {
             container.add(Box.createVerticalStrut(8));
 
@@ -307,6 +309,7 @@ public class AlchCopilotPanel extends PluginPanel {
         return container;
     }
 
+    // color code profit per hour based on value ranges
     private Color getProfitPerHourColor(long profitPerHour) {
         if (profitPerHour >= 500000) {
             return new Color(0, 255, 0);
@@ -323,6 +326,7 @@ public class AlchCopilotPanel extends PluginPanel {
         }
     }
 
+    // color code volume based on daily trade amounts
     private Color getVolumeColor(int volume) {
         if (volume >= 10000) {
             return new Color(0, 255, 0);
@@ -339,6 +343,7 @@ public class AlchCopilotPanel extends PluginPanel {
         }
     }
 
+    // create a standardized info row with label and colored value
     private JPanel createInfoRow(String label, String value, Color valueColor) {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
@@ -358,6 +363,7 @@ public class AlchCopilotPanel extends PluginPanel {
         return panel;
     }
 
+    // format numbers with shorthand notation (1k, 1m, etc)
     private String formatNumber(int number) {
         try {
             String shorthand = IntegerUtil.toShorthand(number);

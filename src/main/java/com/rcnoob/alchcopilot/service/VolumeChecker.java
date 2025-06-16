@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class VolumeChecker {
+    // OSRS wiki API for 5-minute trading data
     private static final String OSRS_EXCHANGE_API = "https://prices.runescape.wiki/api/v1/osrs/5m";
 
     private final OkHttpClient httpClient;
@@ -25,6 +26,7 @@ public class VolumeChecker {
         this.gson = new Gson();
     }
 
+    // wrapper for volume data with calculations
     public static class VolumeData {
         public final int itemId;
         public final long buyVolume;
@@ -42,19 +44,22 @@ public class VolumeChecker {
             return buyVolume + sellVolume;
         }
 
+        // extrapolate 5-minute data to daily estimate (288 five-minute periods per day)
         public long getEstimatedDailyVolume() {
             return getTotalVolume() * 288;
         }
     }
 
+    // fetch trading volume data for specific item
     public CompletableFuture<VolumeData> checkVolume(int itemId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 Request request = new Request.Builder()
                         .url(OSRS_EXCHANGE_API)
-                        .header("User-Agent", "AlchCopilot RuneLite Plugin")
+                        .header("User-Agent", "AlchCopilot-RuneLite-Plugin")
                         .build();
 
+                // make API call and parse response
                 try (Response response = httpClient.newCall(request).execute()) {
                     if (!response.isSuccessful()) {
                         log.warn("Failed to fetch volume data: {}", response.code());
@@ -65,11 +70,13 @@ public class VolumeChecker {
                     JsonObject jsonResponse = gson.fromJson(responseBody, JsonObject.class);
                     JsonObject data = jsonResponse.getAsJsonObject("data");
 
+                    // check if item exists in response
                     if (!data.has(String.valueOf(itemId))) {
                         log.debug("No volume data available for item {}", itemId);
                         return new VolumeData(itemId, 0, 0);
                     }
 
+                    // extract buy and sell volumes
                     JsonObject itemData = data.getAsJsonObject(String.valueOf(itemId));
                     long buyVolume = itemData.has("highPriceVolume") ?
                             itemData.get("highPriceVolume").getAsLong() : 0;
@@ -85,6 +92,7 @@ public class VolumeChecker {
         });
     }
 
+    // cleanup HTTP client resources
     public void shutdown() {
         httpClient.dispatcher().executorService().shutdown();
         httpClient.connectionPool().evictAll();

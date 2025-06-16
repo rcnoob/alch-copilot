@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 )
 public class AlchCopilotPlugin extends Plugin {
 
+    // flags to control search behavior
     public boolean readyForOptimalUpdate = true;
     public boolean findingNewItem = false;
     private boolean searchInProgress = false;
@@ -44,6 +45,7 @@ public class AlchCopilotPlugin extends Plugin {
     @Inject
     private ClientToolbar clientToolbar;
 
+    // store recommendations and track which items we've already recommended
     private List<AlchItem> recommendations = new ArrayList<>();
     private Set<Integer> recommendedItemIds = new HashSet<>();
     private VolumeChecker volumeChecker;
@@ -56,6 +58,7 @@ public class AlchCopilotPlugin extends Plugin {
         volumeChecker = new VolumeChecker();
         itemDatabaseService = new ItemDatabaseService();
 
+        // load item database for membership filtering
         itemDatabaseService.refreshDatabase()
                 .whenComplete((result, throwable) -> {
                     if (throwable != null) {
@@ -69,6 +72,7 @@ public class AlchCopilotPlugin extends Plugin {
             onLoginOrActivated();
         }
 
+        // create UI panel and navigation button
         panel = new AlchCopilotPanel(this, client, itemManager);
         final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/icon.png");
 
@@ -82,6 +86,7 @@ public class AlchCopilotPlugin extends Plugin {
         clientToolbar.addNavigation(navButton);
     }
 
+    // reset search state and clear recommendations
     public void refreshRecommendations() {
         clearRecommendations();
         findingNewItem = false;
@@ -89,12 +94,14 @@ public class AlchCopilotPlugin extends Plugin {
         searchInProgress = false;
     }
 
+    // trigger search for new items to add to existing list
     public void findNewOptimalItem() {
         findingNewItem = true;
         readyForOptimalUpdate = true;
         searchInProgress = false;
     }
 
+    // main search logic - finds optimal alch items based on config criteria
     private void executeOptimalAlchItemSearch(boolean isNewItemSearch) {
         if (searchInProgress) {
             log.debug("Search already in progress, skipping duplicate request");
@@ -105,6 +112,7 @@ public class AlchCopilotPlugin extends Plugin {
         log.info("Starting optimal alch item search... (isNewItemSearch: {}, excluded items: {}, membership filter: {})",
                 isNewItemSearch, recommendedItemIds.size(), config.membershipFilter());
 
+        // get all item prices and nature rune cost
         List<ItemPrice> itemPrices = this.itemManager.search("");
         int natureRunePrice = this.itemManager.getItemPrice(net.runelite.api.gameval.ItemID.NATURERUNE);
 
@@ -112,14 +120,17 @@ public class AlchCopilotPlugin extends Plugin {
         int skippedDuplicates = 0;
         int skippedMembership = 0;
 
+        // filter items based on config criteria
         for (ItemPrice price : itemPrices) {
             int itemId = price.getId();
 
+            // skip items we already recommended if looking for new items
             if (isNewItemSearch && recommendedItemIds.contains(itemId)) {
                 skippedDuplicates++;
                 continue;
             }
 
+            // apply membership filter
             if (!passesMembershipFilter(itemId)) {
                 skippedMembership++;
                 continue;
@@ -133,6 +144,7 @@ public class AlchCopilotPlugin extends Plugin {
                 continue;
             }
 
+            // calculate profit and apply filters
             int currentPrice = itemManager.getWikiPrice(price);
             int highAlchPrice = itemComposition.getHaPrice();
             int profit = highAlchPrice - currentPrice - natureRunePrice;
@@ -141,11 +153,11 @@ public class AlchCopilotPlugin extends Plugin {
             int recommendedQuantity = calculateOptimalQuantity(currentPrice, geLimit);
             long totalCost = (long) recommendedQuantity * currentPrice;
 
+            // apply config-based filters
             if (profit < config.minimumProfit() ||
                     geLimit < config.minimumGeLimit() ||
                     (config.maxPrice() > 0 && currentPrice > config.maxPrice()) ||
-                    (config.maxTotalPrice() > 0 && totalCost > config.maxTotalPrice()) ||
-                    isLowVolumeItem(name, geLimit)) {
+                    (config.maxTotalPrice() > 0 && totalCost > config.maxTotalPrice())) {
                 continue;
             }
 
@@ -167,6 +179,7 @@ public class AlchCopilotPlugin extends Plugin {
         searchWithProgressiveFallback(candidates, isNewItemSearch);
     }
 
+    // check if item passes membership requirement filter
     private boolean passesMembershipFilter(int itemId) {
         AlchCopilotConfig.MembershipFilter filter = config.membershipFilter();
 
@@ -191,19 +204,22 @@ public class AlchCopilotPlugin extends Plugin {
         }
     }
 
+    // try multiple search strategies with fallback if no items found
     private void searchWithProgressiveFallback(List<AlchItem> candidates, boolean isNewItemSearch) {
         candidates.sort(Comparator.comparing(AlchItem::getHighAlchProfit).reversed());
 
+        // search tiers: [candidates to check, check volume (1=yes, 0=no)]
         int[][] searchTiers = {
-                {8, 1},
-                {15, 1},
-                {25, 0},
-                {50, 0}
+                {8, 1},   // top 8 with volume check
+                {15, 1},  // top 15 with volume check
+                {25, 0},  // top 25 without volume check
+                {50, 0}   // top 50 without volume check
         };
 
         executeSearchTier(candidates, isNewItemSearch, searchTiers, 0);
     }
 
+    // execute search for a specific tier with optional volume checking
     private void executeSearchTier(List<AlchItem> candidates, boolean isNewItemSearch, int[][] searchTiers, int tierIndex) {
         if (tierIndex >= searchTiers.length) {
             log.warn("All search tiers exhausted - no suitable items found");
@@ -221,6 +237,7 @@ public class AlchCopilotPlugin extends Plugin {
 
         List<AlchItem> tierCandidates = candidates.subList(0, candidatesToCheck);
 
+        // if no volume check needed, just pick the best profit item
         if (!checkVolume) {
             if (!tierCandidates.isEmpty()) {
                 AlchItem bestItem = tierCandidates.get(0);
@@ -238,6 +255,7 @@ public class AlchCopilotPlugin extends Plugin {
             return;
         }
 
+        // perform volume checks on all candidates in this tier
         AtomicInteger completed = new AtomicInteger(0);
         List<CompletableFuture<ScoredItem>> futures = new ArrayList<>();
 
@@ -250,6 +268,7 @@ public class AlchCopilotPlugin extends Plugin {
                                 progress, tierCandidates.size(), tierIndex + 1,
                                 candidate.getName(), volumeData.getEstimatedDailyVolume());
 
+                        // score items based on profit and volume
                         double profitScore = candidate.getHighAlchProfit() / 1000.0;
                         double volumeScore = Math.min(Math.log10(volumeData.getEstimatedDailyVolume() + 1) / 6.0, 1.0);
                         double totalScore = (0.6 * profitScore) + (0.4 * volumeScore);
@@ -264,6 +283,7 @@ public class AlchCopilotPlugin extends Plugin {
             futures.add(future);
         }
 
+        // wait for all volume checks to complete and pick best item
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
                 .thenRun(() -> {
                     ScoredItem bestItem = null;
@@ -301,6 +321,7 @@ public class AlchCopilotPlugin extends Plugin {
                 });
     }
 
+    // wrapper class for items with volume data and calculated scores
     private static class ScoredItem {
         final AlchItem item;
         final VolumeChecker.VolumeData volumeData;
@@ -313,6 +334,7 @@ public class AlchCopilotPlugin extends Plugin {
         }
     }
 
+    // add item to recommendations list, avoiding duplicates
     private void addRecommendation(AlchItem item, VolumeChecker.VolumeData volumeData) {
         if (recommendedItemIds.contains(item.getItemId())) {
             log.debug("Item {} already recommended, skipping duplicate", item.getName());
@@ -323,9 +345,11 @@ public class AlchCopilotPlugin extends Plugin {
             item.setVolumeData(volumeData);
         }
 
+        // add to front of list (most recent first)
         recommendations.add(0, item);
         recommendedItemIds.add(item.getItemId());
 
+        // trim list to max size
         while (recommendations.size() > config.maxRecommendations()) {
             AlchItem removed = recommendations.remove(recommendations.size() - 1);
             recommendedItemIds.remove(removed.getItemId());
@@ -334,45 +358,23 @@ public class AlchCopilotPlugin extends Plugin {
         log.info("Added recommendation: {} (Total recommendations: {})", item.getName(), recommendations.size());
     }
 
+    // remove specific item from recommendations
     public void removeRecommendation(AlchItem item) {
         recommendations.remove(item);
         recommendedItemIds.remove(item.getItemId());
     }
 
+    // clear all recommendations
     public void clearRecommendations() {
         recommendations.clear();
         recommendedItemIds.clear();
     }
 
-    private boolean isLowVolumeItem(String name, int geLimit) {
-        String lowerName = name.toLowerCase();
-
-        if (lowerName.contains("ornament") || lowerName.contains("(or)") ||
-                lowerName.contains("3rd age") || lowerName.contains("gilded") ||
-                lowerName.contains("rare") || lowerName.contains("holiday") ||
-                lowerName.contains("golden") || lowerName.contains("blessed") ||
-                lowerName.contains("(t)") || lowerName.contains("(g)") ||
-                (lowerName.contains("crystal") && !lowerName.contains("seed")) ||
-                lowerName.contains("trimmed") || lowerName.contains("decorative") ||
-                lowerName.contains("void") || lowerName.contains("elite void")) {
-            return true;
-        }
-
-        if (geLimit < 150) {
-            return true;
-        }
-
-        if (lowerName.contains("rune") || lowerName.contains("dragon") ||
-                lowerName.contains("barrows") || lowerName.contains("whip")) {
-            return false;
-        }
-
-        return false;
-    }
-
+    // calculate how many items to buy based on GE limit and total cost constraints
     private int calculateOptimalQuantity(int itemPrice, int geLimit) {
         int quantity = geLimit;
 
+        // limit by total investment if configured
         if (config.maxTotalPrice() > 0) {
             int maxByTotalPrice = config.maxTotalPrice() / itemPrice;
             quantity = Math.min(quantity, maxByTotalPrice);
@@ -408,6 +410,7 @@ public class AlchCopilotPlugin extends Plugin {
         return configManager.getConfig(AlchCopilotConfig.class);
     }
 
+    // trigger search when conditions are met
     @Subscribe
     public void onGameTick(GameTick event) {
         if (readyForOptimalUpdate && client.getGameState() == GameState.LOGGED_IN && !searchInProgress) {
@@ -423,6 +426,7 @@ public class AlchCopilotPlugin extends Plugin {
         return !recommendations.isEmpty();
     }
 
+    // auto-search on login if configured
     private void onLoginOrActivated() {
         if (config.refreshOnLogin()) {
             readyForOptimalUpdate = true;

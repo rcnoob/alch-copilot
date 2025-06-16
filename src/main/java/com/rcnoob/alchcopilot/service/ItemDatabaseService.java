@@ -21,6 +21,7 @@ public class ItemDatabaseService {
     private static final Duration CACHE_DURATION = Duration.ofHours(24); // Cache for 24 hours
 
     private final HttpClient httpClient;
+    // cache mapping item id to whether it's members-only
     private final Map<Integer, Boolean> membershipCache = new ConcurrentHashMap<>();
     private volatile long lastFetchTime = 0;
     private volatile boolean fetchInProgress = false;
@@ -32,6 +33,7 @@ public class ItemDatabaseService {
                 .build();
     }
 
+    // check if item is members-only, fetch data if needed
     public CompletableFuture<Boolean> isItemMembersOnly(int itemId) {
         if (membershipCache.containsKey(itemId)) {
             return CompletableFuture.completedFuture(membershipCache.get(itemId));
@@ -44,10 +46,12 @@ public class ItemDatabaseService {
         return ensureDatabaseLoaded().thenApply(v -> membershipCache.get(itemId));
     }
 
+    // get membership status without triggering fetch
     public Boolean getMembershipStatusSync(int itemId) {
         return membershipCache.get(itemId);
     }
 
+    // force refresh of the entire database
     public CompletableFuture<Void> refreshDatabase() {
         log.info("Forcing refresh of item database");
         lastFetchTime = 0; // Invalidate cache
@@ -58,10 +62,12 @@ public class ItemDatabaseService {
         return membershipCache.size();
     }
 
+    // check if cached data is still fresh
     public boolean isCacheRecent() {
         return System.currentTimeMillis() - lastFetchTime < CACHE_DURATION.toMillis();
     }
 
+    // ensure database is loaded, avoid duplicate fetches
     private CompletableFuture<Void> ensureDatabaseLoaded() {
         if (isCacheRecent()) {
             return CompletableFuture.completedFuture(null);
@@ -78,6 +84,7 @@ public class ItemDatabaseService {
         }
     }
 
+    // download and parse item database from github
     private CompletableFuture<Void> fetchItemDatabase() {
         log.info("Fetching item database from: {}", ITEM_DB_URL);
 
@@ -109,6 +116,7 @@ public class ItemDatabaseService {
                 });
     }
 
+    // parse JSON and extract membership info for each item
     private void parseAndCacheItems(String jsonData) {
         try {
             log.debug("Parsing item database JSON...");
@@ -119,11 +127,13 @@ public class ItemDatabaseService {
             int membersItems = 0;
             int f2pItems = 0;
 
+            // iterate through all items in the database
             for (Map.Entry<String, JsonElement> entry : rootObject.entrySet()) {
                 try {
                     int itemId = Integer.parseInt(entry.getKey());
                     JsonObject itemData = entry.getValue().getAsJsonObject();
 
+                    // extract membership requirement
                     if (itemData.has("members")) {
                         boolean isMembers = itemData.get("members").getAsBoolean();
                         membershipCache.put(itemId, isMembers);
@@ -151,6 +161,7 @@ public class ItemDatabaseService {
         }
     }
 
+    // cleanup resources on shutdown
     public void shutdown() {
         try {
             if (currentFetch != null && !currentFetch.isDone()) {
