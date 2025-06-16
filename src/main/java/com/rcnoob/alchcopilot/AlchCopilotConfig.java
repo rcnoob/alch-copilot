@@ -56,11 +56,20 @@ public interface AlchCopilotConfig extends Config {
     }
 
     @ConfigItem(
+            keyName = "minimumVolumePerHour",
+            name = "Minimum Volume per Hour",
+            description = "Minimum trading volume per hour. Items with lower volume may be hard to buy/sell. Set to 0 to disable this filter.",
+            section = selectionSection,
+            position = 4
+    )
+    default int minimumVolumePerHour() { return 100; }
+
+    @ConfigItem(
             keyName = "membershipFilter",
             name = "Item Type Filter",
             description = "Filter items by membership requirement",
             section = selectionSection,
-            position = 4
+            position = 5
     )
     default MembershipFilter membershipFilter() {
         return MembershipFilter.BOTH;

@@ -46,8 +46,8 @@ public class AlchCopilotPlugin extends Plugin {
     private ClientToolbar clientToolbar;
 
     // store recommendations and track which items we've already recommended
-    private List<AlchItem> recommendations = new ArrayList<>();
-    private Set<Integer> recommendedItemIds = new HashSet<>();
+    private final List<AlchItem> recommendations = new ArrayList<>();
+    private final Set<Integer> recommendedItemIds = new HashSet<>();
     private VolumeChecker volumeChecker;
     private ItemDatabaseService itemDatabaseService;
     private NavigationButton navButton;
@@ -206,7 +206,14 @@ public class AlchCopilotPlugin extends Plugin {
 
     // try multiple search strategies with fallback if no items found
     private void searchWithProgressiveFallback(List<AlchItem> candidates, boolean isNewItemSearch) {
-        candidates.sort(Comparator.comparing(AlchItem::getHighAlchProfit).reversed());
+        // gp/hour = profit per alch * alchs per hour (1200 alchs/hour at 3 seconds per alch)
+        final double ALCHS_PER_HOUR = 3600.0 / 3.0;
+
+        candidates.sort((item1, item2) -> {
+            double gpPerHour1 = item1.getHighAlchProfit() * ALCHS_PER_HOUR;
+            double gpPerHour2 = item2.getHighAlchProfit() * ALCHS_PER_HOUR;
+            return Double.compare(gpPerHour2, gpPerHour1); // descending order
+        });
 
         // search tiers: [candidates to check, check volume (1=yes, 0=no)]
         int[][] searchTiers = {
@@ -293,6 +300,13 @@ public class AlchCopilotPlugin extends Plugin {
                         try {
                             ScoredItem scoredItem = future.get();
 
+                            // apply volume filter
+                            if (!passesVolumeFilter(scoredItem.volumeData)) {
+                                log.debug("Item {} filtered out by volume requirement",
+                                        scoredItem.item.getName());
+                                continue;
+                            }
+
                             if (scoredItem.score > bestScore) {
                                 bestItem = scoredItem;
                                 bestScore = scoredItem.score;
@@ -315,10 +329,24 @@ public class AlchCopilotPlugin extends Plugin {
                         searchInProgress = false;
                         SwingUtilities.invokeLater(() -> panel.updateItemList());
                     } else {
-                        log.info("No items found in tier {} - trying next tier", tierIndex + 1);
+                        log.info("No items found in tier {} that meet volume requirements - trying next tier", tierIndex + 1);
                         executeSearchTier(candidates, isNewItemSearch, searchTiers, tierIndex + 1);
                     }
                 });
+    }
+
+    // filter items based on volume requirements after volume checks are complete
+    private boolean passesVolumeFilter(VolumeChecker.VolumeData volumeData) {
+        if (config.minimumVolumePerHour() <= 0) {
+            return true; // filter disabled
+        }
+
+        if (volumeData == null) {
+            return true; // no volume data available, allow through
+        }
+
+        double hourlyVolume = volumeData.getEstimatedDailyVolume() / 24.0;
+        return hourlyVolume >= config.minimumVolumePerHour();
     }
 
     // wrapper class for items with volume data and calculated scores
@@ -345,11 +373,19 @@ public class AlchCopilotPlugin extends Plugin {
             item.setVolumeData(volumeData);
         }
 
-        // add to front of list (most recent first)
-        recommendations.add(0, item);
+        // add item and re-sort by gp/hour
+        recommendations.add(item);
         recommendedItemIds.add(item.getItemId());
 
-        // trim list to max size
+        // sort recommendations by gp/hour (descending)
+        final double ALCHS_PER_HOUR = 3600.0 / 3.0; // 1200 alchs per hour
+        recommendations.sort((item1, item2) -> {
+            double gpPerHour1 = item1.getHighAlchProfit() * ALCHS_PER_HOUR;
+            double gpPerHour2 = item2.getHighAlchProfit() * ALCHS_PER_HOUR;
+            return Double.compare(gpPerHour2, gpPerHour1); // Descending order
+        });
+
+        // trim list to max size (remove from end since list is sorted)
         while (recommendations.size() > config.maxRecommendations()) {
             AlchItem removed = recommendations.remove(recommendations.size() - 1);
             recommendedItemIds.remove(removed.getItemId());
