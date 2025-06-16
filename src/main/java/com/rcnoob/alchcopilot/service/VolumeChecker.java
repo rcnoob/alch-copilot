@@ -5,11 +5,14 @@ import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
+@Singleton
 public class VolumeChecker {
     // OSRS wiki API for 5-minute trading data
     private static final String OSRS_EXCHANGE_API = "https://prices.runescape.wiki/api/v1/osrs/5m";
@@ -17,13 +20,14 @@ public class VolumeChecker {
     private final OkHttpClient httpClient;
     private final Gson gson;
 
-    public VolumeChecker() {
-        this.httpClient = new OkHttpClient.Builder()
+    @Inject
+    public VolumeChecker(OkHttpClient httpClient, Gson gson) {
+        this.httpClient = httpClient.newBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(5, TimeUnit.SECONDS)
                 .build();
-        this.gson = new Gson();
+        this.gson = gson;
     }
 
     // wrapper for volume data with calculations
@@ -90,11 +94,5 @@ public class VolumeChecker {
                 return new VolumeData(itemId, 0, 0);
             }
         });
-    }
-
-    // cleanup HTTP client resources
-    public void shutdown() {
-        httpClient.dispatcher().executorService().shutdown();
-        httpClient.connectionPool().evictAll();
     }
 }

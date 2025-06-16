@@ -44,20 +44,19 @@ public class AlchCopilotPlugin extends Plugin {
     private ItemManager itemManager;
     @Inject
     private ClientToolbar clientToolbar;
+    @Inject
+    private VolumeChecker volumeChecker;
+    @Inject
+    private ItemDatabaseService itemDatabaseService;
 
     // store recommendations and track which items we've already recommended
     private final List<AlchItem> recommendations = new ArrayList<>();
     private final Set<Integer> recommendedItemIds = new HashSet<>();
-    private VolumeChecker volumeChecker;
-    private ItemDatabaseService itemDatabaseService;
     private NavigationButton navButton;
     private AlchCopilotPanel panel;
 
     @Override
     protected void startUp() throws Exception {
-        volumeChecker = new VolumeChecker();
-        itemDatabaseService = new ItemDatabaseService();
-
         // load item database for membership filtering
         itemDatabaseService.refreshDatabase()
                 .whenComplete((result, throwable) -> {
@@ -84,14 +83,6 @@ public class AlchCopilotPlugin extends Plugin {
                 .build();
 
         clientToolbar.addNavigation(navButton);
-    }
-
-    // reset search state and clear recommendations
-    public void refreshRecommendations() {
-        clearRecommendations();
-        findingNewItem = false;
-        readyForOptimalUpdate = true;
-        searchInProgress = false;
     }
 
     // trigger search for new items to add to existing list
@@ -425,12 +416,6 @@ public class AlchCopilotPlugin extends Plugin {
 
     @Override
     protected void shutDown() throws Exception {
-        if (volumeChecker != null) {
-            volumeChecker.shutdown();
-        }
-        if (itemDatabaseService != null) {
-            itemDatabaseService.shutdown();
-        }
         clientToolbar.removeNavigation(navButton);
     }
 

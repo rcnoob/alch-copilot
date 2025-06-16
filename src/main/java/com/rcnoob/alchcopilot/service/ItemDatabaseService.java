@@ -4,33 +4,40 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
+@Singleton
 public class ItemDatabaseService {
 
     private static final String ITEM_DB_URL = "https://raw.githubusercontent.com/0xNeffarion/osrsreboxed-db/master/docs/items-complete.json";
     private static final Duration CACHE_DURATION = Duration.ofHours(24); // Cache for 24 hours
 
-    private final HttpClient httpClient;
+    private final OkHttpClient httpClient;
+    private final Gson gson;
+
     // cache mapping item id to whether it's members-only
     private final Map<Integer, Boolean> membershipCache = new ConcurrentHashMap<>();
     private volatile long lastFetchTime = 0;
     private volatile boolean fetchInProgress = false;
     private CompletableFuture<Void> currentFetch = null;
 
-    public ItemDatabaseService() {
-        this.httpClient = HttpClient.newBuilder()
+    @Inject
+    public ItemDatabaseService(OkHttpClient httpClient, Gson gson) {
+        this.httpClient = httpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
+        this.gson = gson;
     }
 
     // check if item is members-only, fetch data if needed
@@ -88,21 +95,21 @@ public class ItemDatabaseService {
     private CompletableFuture<Void> fetchItemDatabase() {
         log.info("Fetching item database from: {}", ITEM_DB_URL);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(ITEM_DB_URL))
-                .timeout(Duration.ofSeconds(30))
+        Request request = new Request.Builder()
+                .url(ITEM_DB_URL)
                 .header("User-Agent", "AlchCopilot-RuneLite-Plugin")
-                .GET()
                 .build();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(response -> {
-                    if (response.statusCode() != 200) {
-                        throw new RuntimeException("Failed to fetch item database: HTTP " + response.statusCode());
+        return CompletableFuture.supplyAsync(() -> {
+                    try (Response response = httpClient.newCall(request).execute()) {
+                        if (!response.isSuccessful()) {
+                            throw new RuntimeException("Failed to fetch item database: HTTP " + response.code());
+                        }
+                        return response.body().string();
+                    } catch (IOException e) {
+                        throw new RuntimeException("Failed to fetch item database", e);
                     }
-                    return response.body();
-                })
-                .thenAccept(this::parseAndCacheItems)
+                }).thenAccept(this::parseAndCacheItems)
                 .whenComplete((result, throwable) -> {
                     synchronized (this) {
                         fetchInProgress = false;
@@ -120,7 +127,6 @@ public class ItemDatabaseService {
     private void parseAndCacheItems(String jsonData) {
         try {
             log.debug("Parsing item database JSON...");
-            Gson gson = new Gson();
             JsonObject rootObject = gson.fromJson(jsonData, JsonObject.class);
 
             int parsed = 0;
