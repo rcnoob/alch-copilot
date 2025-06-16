@@ -55,6 +55,34 @@ public interface AlchCopilotConfig extends Config {
         return 0;
     }
 
+    @ConfigItem(
+            keyName = "membershipFilter",
+            name = "Item Type Filter",
+            description = "Filter items by membership requirement",
+            section = selectionSection,
+            position = 4
+    )
+    default MembershipFilter membershipFilter() {
+        return MembershipFilter.BOTH;
+    }
+
+    enum MembershipFilter {
+        F2P("Free-to-Play Only"),
+        P2P("Members Only"),
+        BOTH("Both F2P and P2P");
+
+        private final String displayName;
+
+        MembershipFilter(String displayName) {
+            this.displayName = displayName;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
+    }
+
     @ConfigSection(
             name = "Display Settings",
             description = "How the plugin displays information",
@@ -73,11 +101,22 @@ public interface AlchCopilotConfig extends Config {
     }
 
     @ConfigItem(
+            keyName = "showVolumeInfo",
+            name = "Show Volume Info",
+            description = "Show trading volume information when available.",
+            section = displaySection,
+            position = 1
+    )
+    default boolean showVolumeInfo() {
+        return true;
+    }
+
+    @ConfigItem(
             keyName = "refreshOnLogin",
             name = "Auto-refresh on Login",
             description = "Automatically search for optimal items when logging in.",
             section = displaySection,
-            position = 1
+            position = 2
     )
     default boolean refreshOnLogin() {
         return true;
@@ -88,7 +127,7 @@ public interface AlchCopilotConfig extends Config {
             name = "Maximum Stored Recommendations",
             description = "Maximum number of item recommendations to keep in the list.",
             section = displaySection,
-            position = 2
+            position = 3
     )
     @Range(min = 1, max = 100)
     default int maxRecommendations() {

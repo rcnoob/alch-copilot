@@ -1,6 +1,7 @@
 package com.rcnoob.alchcopilot;
 
 import com.rcnoob.alchcopilot.model.AlchItem;
+import com.rcnoob.alchcopilot.service.VolumeChecker;
 import com.rcnoob.alchcopilot.util.IntegerUtil;
 import net.runelite.api.Client;
 import net.runelite.client.game.ItemManager;
@@ -238,6 +239,21 @@ public class AlchCopilotPanel extends PluginPanel {
             container.add(limitPanel);
         }
 
+        if (plugin.config.showVolumeInfo() && item.getVolumeData() != null) {
+            VolumeChecker.VolumeData volumeData = item.getVolumeData();
+
+            JPanel dailyVolumePanel = createInfoRow("Daily Volume:",
+                    formatNumber((int) volumeData.getEstimatedDailyVolume()) + " units",
+                    getVolumeColor((int) volumeData.getEstimatedDailyVolume()));
+            container.add(dailyVolumePanel);
+
+            int hourlyVolume = Math.max(1, (int) volumeData.getEstimatedDailyVolume() / 24);
+            JPanel hourlyVolumePanel = createInfoRow("Hourly Volume:",
+                    formatNumber(hourlyVolume) + " units/hr",
+                    getVolumeColor(hourlyVolume * 24));
+            container.add(hourlyVolumePanel);
+        }
+
         container.add(Box.createVerticalStrut(10));
 
         int recommendedQuantity = plugin.calculateRecommendedQuantity(item.getGePrice(), item.getGeLimit());
@@ -307,6 +323,22 @@ public class AlchCopilotPanel extends PluginPanel {
         }
     }
 
+    private Color getVolumeColor(int volume) {
+        if (volume >= 10000) {
+            return new Color(0, 255, 0);
+        } else if (volume >= 5000) {
+            return new Color(144, 238, 144);
+        } else if (volume >= 2000) {
+            return Color.GREEN;
+        } else if (volume >= 1000) {
+            return Color.YELLOW;
+        } else if (volume >= 500) {
+            return Color.ORANGE;
+        } else {
+            return Color.RED;
+        }
+    }
+
     private JPanel createInfoRow(String label, String value, Color valueColor) {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
@@ -332,8 +364,8 @@ public class AlchCopilotPanel extends PluginPanel {
             if (shorthand != null && !shorthand.isEmpty()) {
                 return shorthand;
             }
-        } catch (Exception e) {
-            // Fall back to basic formatting
+        } catch (Exception ignored) {
+
         }
 
         return String.format("%,d", number);

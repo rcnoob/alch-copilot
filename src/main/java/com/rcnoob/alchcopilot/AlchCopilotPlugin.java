@@ -3,6 +3,7 @@ package com.rcnoob.alchcopilot;
 import com.google.inject.Provides;
 import com.rcnoob.alchcopilot.model.AlchItem;
 import com.rcnoob.alchcopilot.service.VolumeChecker;
+import com.rcnoob.alchcopilot.service.ItemDatabaseService;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
@@ -46,12 +47,23 @@ public class AlchCopilotPlugin extends Plugin {
     private List<AlchItem> recommendations = new ArrayList<>();
     private Set<Integer> recommendedItemIds = new HashSet<>();
     private VolumeChecker volumeChecker;
+    private ItemDatabaseService itemDatabaseService;
     private NavigationButton navButton;
     private AlchCopilotPanel panel;
 
     @Override
     protected void startUp() throws Exception {
         volumeChecker = new VolumeChecker();
+        itemDatabaseService = new ItemDatabaseService();
+
+        itemDatabaseService.refreshDatabase()
+                .whenComplete((result, throwable) -> {
+                    if (throwable != null) {
+                        log.warn("Failed to load item database on startup: {}", throwable.getMessage());
+                    } else {
+                        log.info("Item database loaded successfully with {} items", itemDatabaseService.getCacheSize());
+                    }
+                });
 
         if (client.getGameState() == GameState.LOGGED_IN) {
             onLoginOrActivated();
@@ -90,20 +102,26 @@ public class AlchCopilotPlugin extends Plugin {
         }
 
         searchInProgress = true;
-        log.info("Starting optimal alch item search... (isNewItemSearch: {}, excluded items: {})",
-                isNewItemSearch, recommendedItemIds.size());
+        log.info("Starting optimal alch item search... (isNewItemSearch: {}, excluded items: {}, membership filter: {})",
+                isNewItemSearch, recommendedItemIds.size(), config.membershipFilter());
 
         List<ItemPrice> itemPrices = this.itemManager.search("");
-        int natureRunePrice = this.itemManager.getItemPrice(net.runelite.api.ItemID.NATURE_RUNE);
+        int natureRunePrice = this.itemManager.getItemPrice(net.runelite.api.gameval.ItemID.NATURERUNE);
 
         List<AlchItem> candidates = new ArrayList<>();
         int skippedDuplicates = 0;
+        int skippedMembership = 0;
 
         for (ItemPrice price : itemPrices) {
             int itemId = price.getId();
 
             if (isNewItemSearch && recommendedItemIds.contains(itemId)) {
                 skippedDuplicates++;
+                continue;
+            }
+
+            if (!passesMembershipFilter(itemId)) {
+                skippedMembership++;
                 continue;
             }
 
@@ -135,7 +153,8 @@ public class AlchCopilotPlugin extends Plugin {
             candidates.add(new AlchItem(name, itemId, currentPrice, highAlchPrice, profit, geLimit, image));
         }
 
-        log.info("Found {} candidates after filtering (skipped {} duplicates)", candidates.size(), skippedDuplicates);
+        log.info("Found {} candidates after filtering (skipped {} duplicates, {} membership filtered)",
+                candidates.size(), skippedDuplicates, skippedMembership);
 
         if (candidates.isEmpty()) {
             log.warn("No suitable alch items found meeting criteria");
@@ -146,6 +165,30 @@ public class AlchCopilotPlugin extends Plugin {
         }
 
         searchWithProgressiveFallback(candidates, isNewItemSearch);
+    }
+
+    private boolean passesMembershipFilter(int itemId) {
+        AlchCopilotConfig.MembershipFilter filter = config.membershipFilter();
+
+        if (filter == AlchCopilotConfig.MembershipFilter.BOTH) {
+            return true;
+        }
+
+        Boolean isMembers = itemDatabaseService.getMembershipStatusSync(itemId);
+
+        if (isMembers == null) {
+            return true;
+        }
+
+        switch (filter) {
+            case F2P:
+                return !isMembers;
+            case P2P:
+                return isMembers;
+            case BOTH:
+            default:
+                return true;
+        }
     }
 
     private void searchWithProgressiveFallback(List<AlchItem> candidates, boolean isNewItemSearch) {
@@ -346,6 +389,9 @@ public class AlchCopilotPlugin extends Plugin {
     protected void shutDown() throws Exception {
         if (volumeChecker != null) {
             volumeChecker.shutdown();
+        }
+        if (itemDatabaseService != null) {
+            itemDatabaseService.shutdown();
         }
         clientToolbar.removeNavigation(navButton);
     }
